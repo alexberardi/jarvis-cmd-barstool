@@ -1,0 +1,30 @@
+schema_version: 1
+name: get_barstool
+display_name: Barstool Sports
+description: Get the latest Barstool Sports headlines, with optional filtering by sport (NFL, NBA, MLB, NHL, college, golf, MMA, soccer, gambling, viral).
+version: 0.1.0
+min_jarvis_version: 0.9.0
+license: MIT
+author:
+  github: alexberardi
+categories:
+- sports
+- news
+platforms:
+- darwin
+- linux
+keywords:
+- barstool
+- barstool sports
+- news
+- headlines
+- sports
+- pmt
+- pardon my take
+components:
+- type: command
+  name: get_barstool
+  path: commands/get_barstool/command.py
+secrets: []
+packages:
+- name: httpx
