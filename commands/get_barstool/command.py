@@ -40,13 +40,21 @@ except ImportError:
 from jarvis_command_sdk import (
     CommandExample,
     CommandResponse,
+    FastPathPattern,
     IJarvisCommand,
     IJarvisParameter,
     IJarvisSecret,
     JarvisPackage,
     JarvisParameter,
+    PreRouteResult,
     RequestInformation,
 )
+
+# Spoken word number → int. Only common small counts.
+_SPOKEN_NUMBERS: Dict[str, int] = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
 
 logger = JarvisLogger(service="cmd.get_barstool")
 
@@ -252,6 +260,113 @@ class GetBarstoolCommand(IJarvisCommand):
                 expected_parameters={"category": cat},
             ))
         return examples
+
+    # ------------------------------------------------------------------
+    # Fast-path patterns — bypass the LLM for the stereotyped shapes.
+    # All patterns require the word "barstool" somewhere in the utterance
+    # so this never accidentally claims plain "news" / "headlines" — those
+    # belong to get_news.
+    # ------------------------------------------------------------------
+
+    @property
+    def fast_path_patterns(self) -> List[FastPathPattern]:
+        cat_keys = [k for k in _CATEGORIES if k != "all"]
+        # Python regex doesn't allow the same named group twice in a single
+        # pattern, so each pattern below uses ?P<category> once. We build the
+        # alternation here and inline it into each regex string.
+        cat_alt = "|".join(cat_keys)
+        cat_named = "(?P<category>" + cat_alt + ")"
+        spoken_alt = "|".join(_SPOKEN_NUMBERS)
+        return [
+            FastPathPattern(
+                id="get_barstool.top_n",
+                description="Bypass LLM for 'top N Barstool stories/headlines'",
+                example="top 3 Barstool stories",
+                regex=(
+                    r"^\s*top\s+(?P<count>\d+|"
+                    + spoken_alt
+                    + r")\s+barstool\s+(?:stories|headlines?|posts?|articles?)\s*[?.!]*$"
+                ),
+                handler="_fp_top_n",
+            ),
+            FastPathPattern(
+                id="get_barstool.give_n",
+                description="Bypass LLM for 'give me N Barstool headlines'",
+                example="give me one Barstool headline",
+                regex=(
+                    r"^\s*give\s+me\s+(?P<count>\d+|"
+                    + spoken_alt
+                    + r")\s+barstool\s+(?:stories|headlines?|posts?|articles?)\s*[?.!]*$"
+                ),
+                handler="_fp_top_n",
+            ),
+            FastPathPattern(
+                id="get_barstool.category_any",
+                description="Bypass LLM for 'any Barstool <category> news'",
+                example="any Barstool NFL news",
+                regex=(
+                    r"^\s*any\s+barstool\s+" + cat_named
+                    + r"\s+(?:news|headlines?|stories|update)?\s*[?.!]*$"
+                ),
+                handler="_fp_category",
+            ),
+            FastPathPattern(
+                id="get_barstool.category_saying",
+                description="Bypass LLM for 'what's Barstool saying about <category>'",
+                example="what's Barstool saying about the NBA",
+                regex=(
+                    r"^\s*what'?s\s+barstool\s+saying\s+about(?:\s+the)?\s+"
+                    + cat_named + r"\s*[?.!]*$"
+                ),
+                handler="_fp_category",
+            ),
+            FastPathPattern(
+                id="get_barstool.category_bare",
+                description="Bypass LLM for 'Barstool <category>' / 'Barstool <category> news'",
+                example="Barstool NFL",
+                regex=(
+                    r"^\s*barstool\s+" + cat_named
+                    + r"(?:\s+(?:news|headlines?))?\s*[?.!]*$"
+                ),
+                handler="_fp_category",
+            ),
+            FastPathPattern(
+                id="get_barstool.bare",
+                description="Bypass LLM for bare Barstool requests ('what's on Barstool', 'give me Barstool headlines')",
+                example="what's on Barstool",
+                regex=(
+                    r"^\s*(?:"
+                    r"what'?s\s+(?:on|new\s+on|happening\s+on)\s+barstool"
+                    r"|what'?s\s+barstool\s+(?:saying|got)(?:\s+today)?"
+                    r"|give\s+me\s+(?:the\s+)?(?:latest\s+)?barstool(?:\s+(?:headlines?|news|stories))?"
+                    r"|latest\s+(?:from\s+)?barstool(?:\s+sports)?"
+                    r"|anything\s+new\s+on\s+barstool"
+                    r"|read\s+me\s+barstool"
+                    r"|barstool(?:\s+(?:news|headlines?|please|update))?"
+                    r")\s*[?.!]*$"
+                ),
+                handler="_fp_bare",
+            ),
+        ]
+
+    @staticmethod
+    def _parse_count(token: str) -> int | None:
+        token = token.lower().strip()
+        if token.isdigit():
+            return int(token)
+        return _SPOKEN_NUMBERS.get(token)
+
+    def _fp_top_n(self, match, voice_command: str) -> PreRouteResult | None:
+        count = self._parse_count(match.group("count"))
+        if count is None or count <= 0:
+            return None
+        return PreRouteResult(arguments={"count": count})
+
+    def _fp_category(self, match, voice_command: str) -> PreRouteResult | None:
+        return PreRouteResult(arguments={"category": match.group("category").lower()})
+
+    def _fp_bare(self, match, voice_command: str) -> PreRouteResult | None:
+        return PreRouteResult(arguments={})
 
     # ------------------------------------------------------------------
     # Execution
