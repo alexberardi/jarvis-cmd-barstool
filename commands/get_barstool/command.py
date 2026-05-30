@@ -56,6 +56,22 @@ _SPOKEN_NUMBERS: Dict[str, int] = {
     "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 }
 
+
+def _compose_barstool_message(articles: List[Dict[str, Any]], category: str) -> str:
+    """Spoken summary used on the pre-route fast path."""
+    if not articles:
+        if category == "all":
+            return "I couldn't find any recent Barstool stories."
+        return f"No recent Barstool stories tagged {category}."
+    cat_phrase = "" if category == "all" else f"{category} "
+    titles = [a.get("title", "").strip() for a in articles[:3] if a.get("title")]
+    if not titles:
+        return f"Here's the latest from Barstool, but no headline text was available."
+    if len(titles) == 1:
+        return f"Top {cat_phrase}Barstool story: {titles[0]}."
+    parts = ". ".join(f"{i + 1}. {t}" for i, t in enumerate(titles))
+    return f"Top {len(titles)} {cat_phrase}Barstool stories. {parts}."
+
 logger = JarvisLogger(service="cmd.get_barstool")
 
 SITEMAP_BASE = "https://www.barstoolsports.com/sitemap"
@@ -432,13 +448,20 @@ class GetBarstoolCommand(IJarvisCommand):
             for a in articles
         ]
 
+        bs_context: Dict[str, Any] = {
+            "category": category,
+            "count": len(slim_articles),
+            "source": "Barstool Sports",
+            "articles": slim_articles,
+        }
+        # Pre-route callers have no LLM downstream — pre-compose a spoken
+        # summary so the wrapper sees a `message` and doesn't fall through
+        # to the LLM path.
+        if request_info.is_pre_routed:
+            bs_context["message"] = _compose_barstool_message(slim_articles, category)
+
         return CommandResponse.success_response(
-            context_data={
-                "category": category,
-                "count": len(slim_articles),
-                "source": "Barstool Sports",
-                "articles": slim_articles,
-            },
+            context_data=bs_context,
             wait_for_input=False,
         )
 
