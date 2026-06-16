@@ -45,7 +45,7 @@ the sitemap itself.
 ```bash
 jdt deploy local .                        # local Pi node
 jdt deploy docker jarvis-node-kitchen .   # docker container
-jdt deploy ssh pi@jarvis-dev.local .      # Pi over SSH
+jdt deploy ssh pi@<dev-node>.local .      # Pi over SSH
 ```
 
 ## Test
