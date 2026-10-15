@@ -37,7 +37,7 @@ def test_message_composed_when_pre_routed(cmd_module, monkeypatch):
     cmd = cmd_module.GetBarstoolCommand()
     monkeypatch.setattr(cmd, "_fetch_latest_entries", lambda: _stub_entries(3))
 
-    from core.request_information import RequestInformation
+    from jarvis_command_sdk import RequestInformation
     req = RequestInformation(
         voice_command="barstool",
         conversation_id="c",
@@ -53,7 +53,7 @@ def test_no_message_when_not_pre_routed(cmd_module, monkeypatch):
     cmd = cmd_module.GetBarstoolCommand()
     monkeypatch.setattr(cmd, "_fetch_latest_entries", lambda: _stub_entries(2))
 
-    from core.request_information import RequestInformation
+    from jarvis_command_sdk import RequestInformation
     req = RequestInformation(
         voice_command="barstool",
         conversation_id="c",
